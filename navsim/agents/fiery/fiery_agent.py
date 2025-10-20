@@ -10,17 +10,19 @@ import pytorch_lightning as pl
 from navsim.agents.abstract_agent import AbstractAgent
 from navsim.agents.diffusiondrive.transfuser_config import TransfuserConfig
 
-from navsim.agents.diffusiondrive.transfuser_model_v2 import V2TransfuserModel as TransfuserModel
 
+from navsim.agents.fiery.fiery_model import FieryModel
 from navsim.agents.diffusiondrive.transfuser_callback import TransfuserCallback 
 from navsim.agents.diffusiondrive.transfuser_loss import transfuser_loss
-from navsim.agents.diffusiondrive.transfuser_features import TransfuserFeatureBuilder, TransfuserTargetBuilder
+from navsim.agents.fiery.fiery_features import FieryFeatureBuilder, FieryTargetBuilder
+from navsim.agents.fiery.fiery_config import FieryConfig
 from navsim.common.dataclasses import SensorConfig
 from navsim.planning.training.abstract_feature_target_builder import AbstractFeatureBuilder, AbstractTargetBuilder
 from navsim.agents.diffusiondrive.modules.scheduler import WarmupCosLR
 from omegaconf import DictConfig, OmegaConf, open_dict
 import torch.optim as optim
 from navsim.common.dataclasses import AgentInput, Trajectory, SensorConfig
+
 def build_from_configs(obj, cfg: DictConfig, **kwargs):
     if cfg is None:
         return None
@@ -30,12 +32,13 @@ def build_from_configs(obj, cfg: DictConfig, **kwargs):
     type = cfg.pop('type')
     return getattr(obj, type)(**cfg, **kwargs)
 
-class TransfuserAgent(AbstractAgent):
+
+class FieryAgent(AbstractAgent):
     """Agent interface for TransFuser baseline."""
 
     def __init__(
         self,
-        config: TransfuserConfig,
+        config: FieryConfig,
         lr: float,
         checkpoint_path: Optional[str] = None,
     ):
@@ -51,7 +54,7 @@ class TransfuserAgent(AbstractAgent):
         self._lr = lr
 
         self._checkpoint_path = checkpoint_path
-        self._transfuser_model = TransfuserModel(config)
+        self._model = FieryModel(config)
         self.init_from_pretrained()
 
     def init_from_pretrained(self):
@@ -97,15 +100,15 @@ class TransfuserAgent(AbstractAgent):
 
     def get_target_builders(self) -> List[AbstractTargetBuilder]:
         """Inherited, see superclass."""
-        return [TransfuserTargetBuilder(config=self._config)]
+        return [FieryTargetBuilder(config=self._config)]
 
     def get_feature_builders(self) -> List[AbstractFeatureBuilder]:
         """Inherited, see superclass."""
-        return [TransfuserFeatureBuilder(config=self._config)]
+        return [FieryFeatureBuilder(config=self._config)]
 
     def forward(self, features: Dict[str, torch.Tensor], targets: Dict[str, torch.Tensor]=None) -> Dict[str, torch.Tensor]:
         """Inherited, see superclass."""
-        outputs = self._transfuser_model(features,targets=targets)
+        outputs = self._model(features,targets=targets)
         return outputs
         
     def compute_loss(
@@ -121,10 +124,10 @@ class TransfuserAgent(AbstractAgent):
         """Inherited, see superclass."""
         return self.get_coslr_optimizers()
 
-    # def get_step_lr_optimizers(self):
-    #     optimizer = torch.optim.Adam(self._transfuser_model.parameters(), lr=self._lr, weight_decay=self._config.weight_decay)
-    #     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self._config.lr_steps, gamma=0.1)
-    #     return {'optimizer': optimizer, 'lr_scheduler': scheduler}
+    def get_step_lr_optimizers(self):
+        optimizer = torch.optim.Adam(self._model.parameters(), lr=self._lr, weight_decay=self._config.weight_decay)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=self._config.lr_steps, gamma=0.1)
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
     def get_coslr_optimizers(self):
         # import ipdb; ipdb.set_trace()
@@ -148,7 +151,7 @@ class TransfuserAgent(AbstractAgent):
             params = []
             pgs = [[] for _ in paramwise_cfg['name']]
 
-            for k, v in self._transfuser_model.named_parameters():
+            for k, v in self._model.named_parameters():
                 in_param_group = True
                 for i, (pattern, pg_cfg) in enumerate(paramwise_cfg['name'].items()):
                     if pattern in k:
@@ -157,7 +160,7 @@ class TransfuserAgent(AbstractAgent):
                 if in_param_group:
                     params.append(v)
         else:
-            params = self._transfuser_model.parameters()
+            params = self._model.parameters()
         
         optimizer = build_from_configs(optim, optimizer_cfg, params=params)
         # import ipdb; ipdb.set_trace()

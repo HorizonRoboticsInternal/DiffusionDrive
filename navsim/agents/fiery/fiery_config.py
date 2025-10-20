@@ -8,15 +8,24 @@ from nuplan.planning.simulation.trajectory.trajectory_sampling import Trajectory
 
 
 @dataclass
-class TransfuserConfig:
+class FieryConfig:
     """Global TransFuser config."""
 
     trajectory_sampling: TrajectorySampling = TrajectorySampling(time_horizon=4, interval_length=0.5)
 
     image_architecture: str = "resnet34"
-    lidar_architecture: str = "resnet34"
-    bkb_path: str = "/mnt/nas25/wenxin.shao/workspace/DiffusionDrive/download/resnet34/pytorch_model.bin"
+    # bkb_path: str = "/mnt/nas25/wenxin.shao/workspace/DiffusionDrive/download/resnet34/pytorch_model.bin"
     plan_anchor_path: str = "/mnt/nas25/wenxin.shao/workspace/DiffusionDrive/download/kmeans_navsim_traj_20.npy"
+
+    # encoder
+    encoder_cfg: str = "navsim/agents/fiery/fiery_nuplan.yaml"
+    encoder_pretrained: bool = True
+    encoder_freeze: bool = False
+
+    # bev encoder
+    raster_num_input_channels: int = 64
+    bev_embed_dims: int = 256
+    bev_encoder_freeze: bool = False
 
     latent: bool = False
     latent_rad_thresh: float = 4 * np.pi / 9
@@ -25,7 +34,16 @@ class TransfuserConfig:
     pixels_per_meter: float = 4.0
     hist_max_per_pixel: int = 5
 
-    lidar_min_x: float = -32
+    # image
+    image_params = dict(
+        original_height = 1080,
+        original_width = 1920,
+        resize_scale = 0.25,
+        top_crop = 46,
+        final_dim = [224, 480],
+    )
+
+    lidar_min_x: float = 0
     lidar_max_x: float = 32
     lidar_min_y: float = -32
     lidar_max_y: float = 32
@@ -36,29 +54,8 @@ class TransfuserConfig:
     # new
     lidar_seq_len: int = 1
 
-    camera_width: int = 1024
-    camera_height: int = 256
     lidar_resolution_width = 256
-    lidar_resolution_height = 256
-
-    img_vert_anchors: int = 256 // 32
-    img_horz_anchors: int = 1024 // 32
-    lidar_vert_anchors: int = 256 // 32
-    lidar_horz_anchors: int = 256 // 32
-
-    block_exp = 4
-    n_layer = 2  # Number of transformer layers used in the vision backbone
-    n_head = 4
-    n_scale = 4
-    embd_pdrop = 0.1
-    resid_pdrop = 0.1
-    attn_pdrop = 0.1
-    # Mean of the normal distribution initialization for linear layers in the GPT
-    gpt_linear_layer_init_mean = 0.0
-    # Std of the normal distribution initialization for linear layers in the GPT
-    gpt_linear_layer_init_std = 0.02
-    # Initial weight of the layer norms in the gpt.
-    gpt_layer_norm_init_weight = 1.0
+    lidar_resolution_height = 128
 
     perspective_downsample_factor = 1
     transformer_decoder_join = True
@@ -76,7 +73,7 @@ class TransfuserConfig:
     tf_dropout: float = 0.0
 
     # detection
-    num_bounding_boxes: int = 30
+    num_bounding_boxes: int = 15
 
     # loss weights
     trajectory_weight: float = 12.0
@@ -106,8 +103,8 @@ class TransfuserConfig:
     }
 
     bev_pixel_width: int = lidar_resolution_width
-    bev_pixel_height: int = lidar_resolution_height // 2
-    bev_pixel_size: float = 0.25
+    bev_pixel_height: int = lidar_resolution_height
+    bev_pixel_size: float = (lidar_max_x - lidar_min_x) / lidar_resolution_height
 
     num_bev_classes = 7
     bev_features_channels: int = 64
@@ -128,17 +125,6 @@ class TransfuserConfig:
             }
         }
     }
-    # optimizer=dict(
-    #     type="AdamW",
-    #     lr=1e-4,
-    #     weight_decay=1e-6,
-    # )
-    # scheduler=dict(
-    #     type="MultiStepLR",
-    #     milestones=[90],
-    #     gamma=0.1,
-    # )
-
     @property
     def bev_semantic_frame(self) -> Tuple[int, int]:
         return (self.bev_pixel_height, self.bev_pixel_width)

@@ -81,11 +81,16 @@ class GridSampleCrossBEVAttention(nn.Module):
         bs, num_queries, num_points, _ = traj_points.shape
         
         # Normalize trajectory points to [-1, 1] range for grid_sample
-        normalized_trajectory = traj_points.clone()
-        normalized_trajectory[..., 0] = normalized_trajectory[..., 0] / self.config.lidar_max_y
-        normalized_trajectory[..., 1] = normalized_trajectory[..., 1] / self.config.lidar_max_x
+        # normalized_trajectory = traj_points.clone()
+        # normalized_trajectory[..., 0] = normalized_trajectory[..., 0] / self.config.lidar_max_y
+        # normalized_trajectory[..., 1] = normalized_trajectory[..., 1] / self.config.lidar_max_x
 
-        normalized_trajectory = normalized_trajectory[..., [1, 0]]  # Swap x and y
+        # normalized_trajectory = normalized_trajectory[..., [1, 0]]  # Swap x and y
+        ego_x = traj_points[..., 0]
+        ego_y = traj_points[..., 1]
+        norm_u = 2 * (ego_y - self.config.lidar_min_y) / (self.config.lidar_max_y - self.config.lidar_min_y) - 1
+        norm_v = 2 * (ego_x - self.config.lidar_min_x) / (self.config.lidar_max_x - self.config.lidar_min_x) - 1
+        normalized_trajectory = torch.stack([norm_u, norm_v], dim=-1)
         
         attention_weights = self.attention_weights(queries)
         attention_weights = attention_weights.view(bs, num_queries, num_points).softmax(-1)

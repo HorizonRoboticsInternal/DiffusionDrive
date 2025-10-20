@@ -1,0 +1,66 @@
+# @package _global_
+# v2
+time_receptive_field: 1
+n_future_frames: 8
+total_frame: 9
+pretrained_path: '/mnt/nas20/wenxin.shao/misc/ckpt/nuplan_fiery.ckpt'
+image:
+  names: ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
+  original_height: 1080
+  original_width: 1920
+  resize_scale: 0.25
+  top_crop: 46
+  final_dim: [224, 480]
+lift:
+  # x_bound: [0.0, 50.0, 0.5]
+  # y_bound: [-50.0, 50.0, 0.5]
+  # z_bound: [-10.0, 10.0, 20.0]
+  # d_bound: [2.0, 50.0, 1.0]
+  x_bound: [0.0, 32.0, 0.5]
+  y_bound: [-32.0, 32.0, 0.5]
+  z_bound: [-10.0, 10.0, 20.0]
+  d_bound: [2.0, 32.0, 1.0]
+model:
+  encoder:
+    downsample: 8
+    name: 'efficientnet-b4'
+    out_channels: 64
+    use_depth_distribution: true
+    pretrained: false
+    normalise_image:
+      enable: true
+      mean: [0.485, 0.456, 0.406]
+      std: [0.229, 0.224, 0.225]
+
+  temporal_model:
+    name: 'identity'
+    start_out_channels: 64
+    extra_in_channels: 0
+    inbetween_layers: 0
+    pyramid_pooling: false
+    input_egopose: false
+  decoder:
+    use_feature_buffer: true
+    use_command_buffer: true
+  bn_momentum: 0.1
+
+builder_dataset: nuplan
+feature_buffer_size: 6
+
+camera:
+  past_time_horizon: 0.09
+  past_num_poses: 1
+
+bevmap:
+  target_width: 200  # width of raster passed to the model
+  target_height: 200  # height of raster passed to the model
+  target_pixel_size: 0.5  # [m] pixel size of raster
+  ego_longitudinal_offset: 0.0  # [%] offset percentage to move the ego vehicle inside the raster
+  map_features:
+  - ['LANE', 0, 'polygon']
+  - ['INTERSECTION', 0, 'polygon']
+  - ['LANE', 1, 'boundary']
+  - ['LANE_CONNECTOR', 1, 'boundary']
+  - ['STOP_LINE', 2, 'polygon']
+  future_time_horizon: 4
+  future_num_poses: 8

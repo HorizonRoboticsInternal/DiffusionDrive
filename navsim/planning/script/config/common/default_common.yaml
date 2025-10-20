@@ -3,7 +3,8 @@
 defaults:
   - train_test_split: ???
   # Worker that is used to run simulations
-  - worker: ray_distributed_no_torch
+  # - worker: ray_distributed_no_torch
+  - worker: single_machine_thread_pool
   - _self_
 
 distributed_timeout_seconds: 7200 # Sets how long to wait while synchronizing across worker nodes in a distributed context.
