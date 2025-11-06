@@ -80,13 +80,26 @@ class V2TransfuserModel(nn.Module):
             d_model=config.tf_d_model,
         )
 
-        self._trajectory_head = TrajectoryHead(
-            num_poses=config.trajectory_sampling.num_poses,
-            d_ffn=config.tf_d_ffn,
-            d_model=config.tf_d_model,
-            plan_anchor_path=config.plan_anchor_path,
-            config=config,
-        )
+        if config.plan_anchor_path is not None:
+            self._trajectory_head = TrajectoryHead(
+                num_poses=config.trajectory_sampling.num_poses,
+                d_ffn=config.tf_d_ffn,
+                d_model=config.tf_d_model,
+                plan_anchor_path=config.plan_anchor_path,
+                config=config,
+            )
+        else:
+            from navsim.agents.diffusion_trajectory_model import DiffusionTrajectoryHead
+            self._trajectory_head = DiffusionTrajectoryHead(
+                num_poses=config.trajectory_sampling.num_poses,
+                d_ffn=config.tf_d_ffn,
+                d_model=config.tf_d_model,
+                scheduler_type=config.scheduler_type,
+                training_time_type=config.training_time_type,
+                diffusion_train_steps=config.diffusion_train_steps,
+                diffusion_inference_steps=config.diffusion_inference_steps,
+                config=config,
+            )
         self.bev_proj = nn.Sequential(
             *linear_relu_ln(256, 1, 1,320),
         )
