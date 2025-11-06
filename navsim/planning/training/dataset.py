@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from pathlib import Path
 import logging
 import pickle
@@ -105,6 +105,7 @@ class CacheOnlyDataset(torch.utils.data.Dataset):
                     found_caches.append(data_dict_path.is_file())
                 if all(found_caches):
                     valid_cache_paths[token_path.name] = token_path
+        logger.info(f"Found {len(valid_cache_paths)} valid cached samples in {cache_path}")
 
         return valid_cache_paths
 
@@ -117,7 +118,9 @@ class CacheOnlyDataset(torch.utils.data.Dataset):
 
         token_path = self._valid_cache_paths[token]
 
-        features: Dict[str, torch.Tensor] = {}
+        features: Dict[str, Union[str, torch.Tensor]] = {
+            "token": token,
+        }
         for builder in self._feature_builders:
             data_dict_path = token_path / (builder.get_unique_name() + ".gz")
             data_dict = load_feature_target_from_pickle(data_dict_path)
