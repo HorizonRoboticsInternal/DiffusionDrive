@@ -15,7 +15,25 @@ class FieryConfig:
 
     image_architecture: str = "resnet34"
     # bkb_path: str = "/mnt/nas25/wenxin.shao/workspace/DiffusionDrive/download/resnet34/pytorch_model.bin"
-    plan_anchor_path: str = "/mnt/nas25/wenxin.shao/workspace/DiffusionDrive/download/kmeans_navsim_traj_20.npy"
+    plan_anchor_path: str = "/mnt/cwai/hpfs0/navsim/kmeans_navsim_traj_20.npy"
+    trajectory_head_cls_name: str = "trajectory_head"
+    diffusion_scheduler_type: str = "ddim"
+    training_time_type: str = "discrete"
+    diffusion_train_steps: int = 50
+    diffusion_inference_steps: int = 50
+    enable_pooling: bool = False
+    ego_fut_mode: int = 1
+    ema_decay: float = 0.999
+    num_samples: int = 64
+    mini_batch_size: int = 128
+    beta: float = 0.1 # 1.0
+    Zc: float = 2.0
+    use_adaptive_weighted_policy_losses: bool = False
+    use_kl_div_loss: bool = False
+    kl_div_loss_weight: float = 0.0001
+    navsim_log_path: str = None # path to log annotations
+    sensor_blobs_path: str = None # path to sensor blobs
+    metric_cache_path: str = None # path to metric cache
 
     # encoder
     encoder_cfg: str = "navsim/agents/fiery/fiery_nuplan.yaml"
@@ -83,6 +101,7 @@ class FieryConfig:
     agent_class_weight: float = 10.0
     agent_box_weight: float = 1.0
     bev_semantic_weight: float = 14.0
+    nft_loss_weight: float = 1.0
     use_ema: bool = False
     # BEV mapping
     bev_semantic_classes = {
