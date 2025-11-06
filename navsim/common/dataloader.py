@@ -34,6 +34,7 @@ def filter_scenes(data_path: Path, scene_filter: SceneFilter) -> Dict[str, List[
     if scene_filter.tokens is not None:
         filter_tokens = True
         tokens = set(scene_filter.tokens)
+        print(f"total tokens in the scene_filter: {len(tokens)}")
     else:
         filter_tokens = False
 
@@ -62,7 +63,7 @@ def filter_scenes(data_path: Path, scene_filter: SceneFilter) -> Dict[str, List[
 
         if stop_loading:
             break
-
+    print(f"total number of filtered scenes: {len(filtered_scenes)}")
     return filtered_scenes
 
 
