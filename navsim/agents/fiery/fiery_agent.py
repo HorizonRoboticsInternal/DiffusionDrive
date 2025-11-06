@@ -1,6 +1,7 @@
 from typing import Any, List, Dict, Optional, Union
 import time
 
+from hydra.utils import instantiate
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
@@ -9,7 +10,6 @@ import pytorch_lightning as pl
 
 from navsim.agents.abstract_agent import AbstractAgent
 from navsim.agents.diffusiondrive.transfuser_config import TransfuserConfig
-
 
 from navsim.agents.fiery.fiery_model import FieryModel
 from navsim.agents.diffusiondrive.transfuser_callback import TransfuserCallback 
@@ -22,6 +22,11 @@ from navsim.agents.diffusiondrive.modules.scheduler import WarmupCosLR
 from omegaconf import DictConfig, OmegaConf, open_dict
 import torch.optim as optim
 from navsim.common.dataclasses import AgentInput, Trajectory, SensorConfig
+from navsim.agents.diffusiondrive.ema_checkpoint_callback import ModelCheckpointAtEpochEnd
+from navsim.agents.diffusiondrive.ema_model_callback import EMA
+from navsim.planning.simulation.planner.pdm_planner.simulation.pdm_simulator import PDMSimulator
+from navsim.planning.simulation.planner.pdm_planner.scoring.pdm_scorer import PDMScorer
+from navsim.common.dataloader import SceneFilter
 
 def build_from_configs(obj, cfg: DictConfig, **kwargs):
     if cfg is None:
@@ -56,6 +61,12 @@ class FieryAgent(AbstractAgent):
         self._checkpoint_path = checkpoint_path
         self._model = FieryModel(config)
         self.init_from_pretrained()
+        create_reference_module = getattr(self._model._trajectory_head, "create_reference_modules", None)
+        if create_reference_module is not None and callable(create_reference_module):
+            self._model._trajectory_head.create_reference_modules()
+    
+    def set_simulator(self, simulator: PDMSimulator, scorer: PDMScorer, scene_filter: SceneFilter):
+        self._model._trajectory_head.set_simulator(simulator, scorer, scene_filter)
 
     def init_from_pretrained(self):
         # import ipdb; ipdb.set_trace()
@@ -72,11 +83,18 @@ class FieryAgent(AbstractAgent):
             
             # Load state dict and get info about missing and unexpected keys
             missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=False)
-            
+
+            model_keys = set(self.state_dict().keys())
+            ckpt_keys = set(state_dict.keys())
+            matching_keys = model_keys & ckpt_keys
+            print(f"✅ Matching keys ({len(matching_keys)}), matched_keys: {matching_keys}\n")
+
             if missing_keys:
-                print(f"Missing keys when loading pretrained weights: {missing_keys}")
+                print(f"Missing keys when loading pretrained weights: {missing_keys}\n")
             if unexpected_keys:
-                print(f"Unexpected keys when loading pretrained weights: {unexpected_keys}")
+                print(f"Unexpected keys when loading pretrained weights: {unexpected_keys}\n")
+            if not missing_keys and not unexpected_keys:
+                print(f"Successfully loaded pretrained weights with no missing or unexpected keys. checkpoint path: {self._checkpoint_path} \n")
         else:
             print("No checkpoint path provided. Initializing from scratch.")
     def name(self) -> str:
@@ -187,4 +205,12 @@ class FieryAgent(AbstractAgent):
 
     def get_training_callbacks(self) -> List[pl.Callback]:
         """Inherited, see superclass."""
-        return [TransfuserCallback(self._config)]
+        callbacks = [
+                    TransfuserCallback(self._config),
+                ]
+        if self._config.use_ema:
+            callbacks += [
+                EMA(self._config.ema_decay),
+                ModelCheckpointAtEpochEnd()
+            ]
+        return callbacks
