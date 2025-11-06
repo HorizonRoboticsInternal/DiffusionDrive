@@ -21,6 +21,10 @@ from navsim.agents.diffusiondrive.modules.scheduler import WarmupCosLR
 from omegaconf import DictConfig, OmegaConf, open_dict
 import torch.optim as optim
 from navsim.common.dataclasses import AgentInput, Trajectory, SensorConfig
+from navsim.agents.diffusiondrive.ema_checkpoint_callback import ModelCheckpointAtEpochEnd
+from navsim.agents.diffusiondrive.ema_model_callback import EMA
+
+
 def build_from_configs(obj, cfg: DictConfig, **kwargs):
     if cfg is None:
         return None
@@ -184,4 +188,8 @@ class TransfuserAgent(AbstractAgent):
 
     def get_training_callbacks(self) -> List[pl.Callback]:
         """Inherited, see superclass."""
-        return [TransfuserCallback(self._config)]
+        return [
+                TransfuserCallback(self._config),
+                EMA(self._config.ema_decay) if self._config.use_ema else None,
+                ModelCheckpointAtEpochEnd(),
+            ]
