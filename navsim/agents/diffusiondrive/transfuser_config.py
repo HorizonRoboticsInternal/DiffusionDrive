@@ -15,8 +15,14 @@ class TransfuserConfig:
 
     image_architecture: str = "resnet34"
     lidar_architecture: str = "resnet34"
-    bkb_path: str = "/mnt/nas25/wenxin.shao/workspace/DiffusionDrive/download/resnet34/pytorch_model.bin"
-    plan_anchor_path: str = "/mnt/nas25/wenxin.shao/workspace/DiffusionDrive/download/kmeans_navsim_traj_20.npy"
+    # bkb_path: str = "/mnt/nas25/wenxin.shao/workspace/DiffusionDrive/download/resnet34/pytorch_model.bin"
+    plan_anchor_path: str = "/mnt/cwai/hpfs0/navsim/kmeans_navsim_traj_20.npy"
+    scheduler_type: str = "ddim"
+    training_time_type: str = "discrete"
+    diffusion_train_steps: int = 50
+    diffusion_inference_steps: int = 50
+    use_ema: bool = True
+    ema_decay: float = 0.9999
 
     latent: bool = False
     latent_rad_thresh: float = 4 * np.pi / 9
@@ -85,6 +91,7 @@ class TransfuserConfig:
     diff_loss_weight: float = 20.0
     agent_class_weight: float = 10.0
     agent_box_weight: float = 1.0
+    nft_loss_weight: float = 1.0
     bev_semantic_weight: float = 14.0
     use_ema: bool = False
     # BEV mapping
