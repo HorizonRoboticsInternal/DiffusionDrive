@@ -84,12 +84,21 @@ def cache_scenarios(args: List[Dict[str, Union[List[str], DictConfig]]]) -> List
         num_failures = 0
         num_successes = 0
         all_file_cache_metadata: List[Optional[CacheMetadataEntry]] = []
-        for idx, scene_dict in enumerate(scene_loader.scene_frames_dicts.values()):
-            logger.info(
-                f"Processing scenario {idx + 1} / {len(scene_loader)} in thread_id={thread_id}, node_id={node_id}"
-            )
+        scenes = list(scene_loader.scene_frames_dicts.values())
+        total_scenes = len(scenes)
+        progress_log_interval = max(1, getattr(cfg.cache, "progress_log_interval", 10))
+        gc_every = max(1, getattr(cfg.cache, "gc_every", 50))
+        for idx, scene_dict in enumerate(scenes):
+            if (idx + 1) % progress_log_interval == 0 or idx == 0:
+                logger.info(
+                    f"Processing scenario {idx + 1} / {total_scenes} in thread_id={thread_id}, node_id={node_id}"
+                )
+            # logger.info(
+            #     f"Processing scenario {idx + 1} / {len(scene_loader)} in thread_id={thread_id}, node_id={node_id}"
+            # )
             file_cache_metadata = cache_single_scenario(scene_dict, processor)
-            gc.collect()
+            if (idx + 1) % gc_every == 0:
+                gc.collect()
 
             num_failures += 0 if file_cache_metadata else 1
             num_successes += 1 if file_cache_metadata else 0
