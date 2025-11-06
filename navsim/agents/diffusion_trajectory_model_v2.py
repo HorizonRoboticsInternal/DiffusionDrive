@@ -199,12 +199,12 @@ class CustomTransformerDecoderLayer(nn.Module):
         # 4.9 predict the offset & heading
         poses_reg = self.task_decoder(traj_feature) # (bs, 1, 8, 3)
         poses_reg = poses_reg + noisy_traj_points
-        poses_reg[..., StateSE2Index.HEADING] = poses_reg[..., StateSE2Index.HEADING].tanh() * (3.9 / 2)  # np.pi # 
+        poses_reg[..., StateSE2Index.HEADING] = poses_reg[..., StateSE2Index.HEADING].tanh() * np.pi
 
         return poses_reg
 
 
-class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
+class DiffusionTrajectoryHeadv2(nn.Module):
     """FlowMatching model for trajectory prediction
     """
 
@@ -216,12 +216,7 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
             config: FieryConfig = FieryConfig,
         ):
         """Initialize the DiffusionTrajectoryHead."""
-        super().__init__(
-            num_poses=num_poses,
-            d_ffn=d_ffn,
-            d_model=d_model,
-            config=config,
-        )
+        super().__init__()
         
         self._query_splits = [
             1,
@@ -310,16 +305,11 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
 
         return sigma
 
-    def _prepare_model_input(self, x_target: torch.Tensor, pow=0.5):
+    def _prepare_model_input(self, x_target: torch.Tensor, noise: torch.Tensor,
+                             timesteps: torch.Tensor, pow=0.5):
         # Add noise to the model input according to the noise magnitude at each timestep
-        noise = torch.randn_like(x_target)  # eps ~ N(0, 1)
-        batch_size = x_target.shape[0]
-        device = x_target.device
         if "flow_matching" in self.scheduler_type:
             if self.training_time_type == "discrete":
-                timesteps = torch.randint(1,
-                                        self.diffusion_train_steps, (batch_size, ),
-                                        device=device).long()  # (b, )
                 sigma = self.get_sigmas(timesteps, x_target.device, n_dim=4)
             elif self.training_time_type == "continuous":
                 n_dim = len(x_target.shape)
@@ -331,15 +321,11 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
             else:
                 raise NotImplementedError
             noisy_model_input = sigma * noise + (1.0 - sigma) * x_target
-            return noisy_model_input, sigma, noise
         else:
-            timesteps = torch.randint(1,
-                                    self.diffusion_train_steps, (batch_size, ),
-                                    device=device).long()  # (b, )
             noisy_model_input = self.diffusion_scheduler.add_noise(
                 x_target, noise, timesteps)
         
-            return noisy_model_input, timesteps, noise
+        return noisy_model_input
 
     def forward_train(self, 
                       ego_query,
@@ -369,7 +355,7 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
         timesteps = torch.randint(1,
                                   self.diffusion_train_steps, (batch_size, ),
                                   device=device).long()  # (b, )
-        noisy_traj_points, timesteps, noise = self._prepare_model_input(normed_x_target) # (b, 1, trajectory_steps, action_dim)
+        noisy_traj_points = self._prepare_model_input(normed_x_target, noise, timesteps) # (b, 1, trajectory_steps, action_dim)
 
         # 2. proj noisy_traj_points to the query
         traj_pos_embed = gen_sineembed_for_position(noisy_traj_points, hidden_dim=64) # (b, 1, trajectory_steps, 64)
