@@ -22,7 +22,8 @@ def transfuser_loss(
     if "trajectory_loss" in predictions:
         trajectory_loss = predictions["trajectory_loss"]
     else:
-        trajectory_loss = F.l1_loss(predictions["trajectory"], targets["trajectory"])
+        # trajectory_loss = F.l1_loss(predictions["trajectory"], targets["trajectory"])
+        trajectory_loss = F.mse_loss(predictions["trajectory"], targets["trajectory"])
     agent_class_loss, agent_box_loss = _agent_loss(targets, predictions, config)
     bev_semantic_loss = F.cross_entropy(
         predictions["bev_semantic_map"], targets["bev_semantic_map"].long()
@@ -31,12 +32,22 @@ def transfuser_loss(
         diffusion_loss = predictions['diffusion_loss']
     else:
         diffusion_loss = 0
+    if 'nft_loss' in predictions:
+        nft_loss = predictions['nft_loss']
+    else:
+        nft_loss = 0
+    if 'kl_div_loss' in predictions:
+        kl_div_loss = predictions['kl_div_loss']
+    else:
+        kl_div_loss = 0
     loss = (
         config.trajectory_weight * trajectory_loss
         + config.diff_loss_weight * diffusion_loss
         + config.agent_class_weight * agent_class_loss
         + config.agent_box_weight * agent_box_loss
         + config.bev_semantic_weight * bev_semantic_loss
+        + config.nft_loss_weight * nft_loss
+        + config.kl_div_loss_weight * kl_div_loss
     )
     loss_dict = {
         'loss': loss,
@@ -44,11 +55,20 @@ def transfuser_loss(
         'diffusion_loss': config.diff_loss_weight*diffusion_loss,
         'agent_class_loss': config.agent_class_weight*agent_class_loss,
         'agent_box_loss': config.agent_box_weight*agent_box_loss,
-        'bev_semantic_loss': config.bev_semantic_weight*bev_semantic_loss
+        'bev_semantic_loss': config.bev_semantic_weight*bev_semantic_loss,
+        'nft_loss': config.nft_loss_weight * nft_loss,
+        'kl_div_loss': config.kl_div_loss_weight * kl_div_loss
     }
+    # print(f"loss: {loss.item()}, traj_loss: {trajectory_loss.item()}, trajectory_weight: {config.trajectory_weight}")
+
     if "trajectory_loss_dict" in predictions:
         trajectory_loss_dict = predictions["trajectory_loss_dict"]
         loss_dict.update(trajectory_loss_dict)
+    if "sta_dict" in predictions:
+        sta_dict = predictions["sta_dict"]
+        loss_dict.update(sta_dict)
+    if "mse_error" in predictions:
+        loss_dict["mse_error"] = predictions['mse_error']
     # import ipdb; ipdb.set_trace()
     return loss_dict
 
