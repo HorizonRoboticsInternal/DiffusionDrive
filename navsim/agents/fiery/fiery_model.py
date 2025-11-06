@@ -7,7 +7,7 @@ from navsim.agents.fiery.fiery_config import FieryConfig
 from navsim.agents.diffusiondrive.transfuser_backbone import TransfuserBackbone
 from navsim.agents.diffusiondrive.transfuser_features import BoundingBox2DIndex
 from navsim.common.enums import StateSE2Index
-from diffusers.schedulers import DDIMScheduler
+from diffusers.schedulers import DDIMScheduler, FlowMatchEulerDiscreteScheduler
 from navsim.agents.diffusiondrive.modules.conditional_unet1d import ConditionalUnet1D,SinusoidalPosEmb
 import torch.nn.functional as F
 from navsim.agents.diffusiondrive.modules.blocks import linear_relu_ln,bias_init_with_prob, gen_sineembed_for_position, GridSampleCrossBEVAttention
@@ -20,7 +20,8 @@ from navsim.agents.fiery.modules.e2e_bev_encoder import E2EBEVEncoder
 class FieryModel(nn.Module):
     """Torch module for Transfuser."""
 
-    def __init__(self, config: FieryConfig):
+    def __init__(self, config: FieryConfig, simulator: object = None, 
+                 scorer: object = None, scene_filter: object = None):
         """
         Initializes TransFuser torch module.
         :param config: global config dataclass of TransFuser.
@@ -84,17 +85,48 @@ class FieryModel(nn.Module):
             d_model=config.tf_d_model,
         )
 
-        self._trajectory_head = TrajectoryHead(
-            num_poses=config.trajectory_sampling.num_poses,
-            d_ffn=config.tf_d_ffn,
-            d_model=config.tf_d_model,
-            plan_anchor_path=config.plan_anchor_path,
-            config=config,
-        )
-        self.bev_proj = nn.Sequential(
-            *linear_relu_ln(256, 1, 1,320),
-        )
-
+        if config.trajectory_head_cls_name == "trajectory_head":
+            self._trajectory_head = TrajectoryHead(
+                num_poses=config.trajectory_sampling.num_poses,
+                d_ffn=config.tf_d_ffn,
+                d_model=config.tf_d_model,
+                plan_anchor_path=config.plan_anchor_path,
+                config=config,
+            )
+        elif config.trajectory_head_cls_name == "diffusion_trajectory_head":
+            from navsim.agents.diffusion_trajectory_model import DiffusionTrajectoryHead
+            self._trajectory_head = DiffusionTrajectoryHead(
+                num_poses=config.trajectory_sampling.num_poses,
+                d_ffn=config.tf_d_ffn,
+                d_model=config.tf_d_model,
+                config=config,
+            )
+        elif config.trajectory_head_cls_name == "diffusion_trajectory_head_v2":
+            from navsim.agents.diffusion_trajectory_model_v2 import DiffusionTrajectoryHeadv2
+            self._trajectory_head = DiffusionTrajectoryHeadv2(
+                num_poses=config.trajectory_sampling.num_poses,
+                d_ffn=config.tf_d_ffn,
+                d_model=config.tf_d_model,
+                config=config,
+            )
+        elif config.trajectory_head_cls_name == "diffusion_nft_trajectory_head":
+            from navsim.agents.diffusion_nft_trajectory_model import DiffusionNFTTrajectoryHead
+            self._trajectory_head = DiffusionNFTTrajectoryHead(
+                config=config,
+                num_samples=config.num_samples,
+                mini_batch_size=config.mini_batch_size,
+                beta=config.beta,
+                Zc=config.Zc,
+                use_adaptive_weighted_policy_losses=config.use_adaptive_weighted_policy_losses,
+                use_kl_div_loss = config.use_kl_div_loss
+            )
+        else:
+            raise ValueError(f"Unknown trajectory head class name: {config.trajectory_head_cls_name}")
+        
+        if config.trajectory_head_cls_name in ['trajectory_head','diffusion_trajectory_head',]:
+            self.bev_proj = nn.Sequential(
+                *linear_relu_ln(256, 1, 1,320),
+            )
 
     def forward(self, features: Dict[str, torch.Tensor], targets: Dict[str, torch.Tensor]=None) -> Dict[str, torch.Tensor]:
         """Torch module forward pass."""
@@ -112,36 +144,64 @@ class FieryModel(nn.Module):
             intrinsics=intrinsics,
             extrinsics=extrinsics,
             future_egomotion=future_egomotion
-        )  # [64, 64, 128]
-        bev_feature = self._bev_encoder(bev_feature_upscale)  # [512, 8, 16]
+        )  # [bs, 64, 64, 128]
+        bev_feature = self._bev_encoder(bev_feature_upscale)  # [bs, 256, 8, 16]
 
         bev_spatial_shape = bev_feature_upscale.shape[2:]  # [64, 128]
         concat_cross_bev_shape = bev_feature.shape[2:]  # [8, 16]
 
         # bev_feature = self._bev_downscale(bev_feature).flatten(-2, -1).permute(0, 2, 1)
-        bev_feature = bev_feature.flatten(-2, -1).permute(0, 2, 1)  # [128, 256]
+        bev_feature = bev_feature.flatten(-2, -1).permute(0, 2, 1)  # [bs, 128, 256]
         status_encoding = self._status_encoding(status_feature)
         keyval = torch.concatenate([bev_feature, status_encoding[:, None]], dim=1)  # [129, 256]
         keyval += self._keyval_embedding.weight[None, ...]
-        concat_cross_bev = keyval[:,:-1].permute(0, 2, 1).contiguous().view(batch_size, -1, concat_cross_bev_shape[0], concat_cross_bev_shape[1])  # [256, 8, 16]
+        concat_cross_bev = keyval[:,:-1].permute(0, 2, 1).contiguous().view(
+            batch_size, -1, concat_cross_bev_shape[0], concat_cross_bev_shape[1])  # [bs, 256, 8, 16]
         query = self._query_embedding.weight[None, ...].repeat(batch_size, 1, 1)
         query_out = self._tf_decoder(query, keyval)
         trajectory_query, agents_query = query_out.split(self._query_splits, dim=1)
 
-        concat_cross_bev = F.interpolate(concat_cross_bev, size=bev_spatial_shape, mode='bilinear', align_corners=False)  # [256, 64, 128]
-        cross_bev_feature = torch.cat([concat_cross_bev, bev_feature_upscale], dim=1)  # [320, 64, 128]
-        cross_bev_feature = self.bev_proj(cross_bev_feature.flatten(-2,-1).permute(0,2,1))
-        cross_bev_feature = cross_bev_feature.permute(0,2,1).contiguous().view(batch_size, -1, bev_spatial_shape[0], bev_spatial_shape[1])  # [256, 64, 128]
+        if self._config.trajectory_head_cls_name == "diffusion_trajectory_head_v2":
+            trajectory = self._trajectory_head(
+                trajectory_query,
+                agents_query,
+                concat_cross_bev,
+                bev_spatial_shape,
+                status_encoding[:, None],
+                targets=targets,
+                global_img=None
+            )
+        elif self._config.trajectory_head_cls_name in ["trajectory_head","diffusion_trajectory_head"]:
+            concat_cross_bev = F.interpolate(concat_cross_bev, size=bev_spatial_shape, mode='bilinear', align_corners=False)  # [bs, 256, 64, 128]
+            cross_bev_feature = torch.cat([concat_cross_bev, bev_feature_upscale], dim=1)  # [bs, 320, 64, 128]
+            cross_bev_feature = self.bev_proj(cross_bev_feature.flatten(-2,-1).permute(0,2,1)) # [bs, 8192, 256]
+            cross_bev_feature = cross_bev_feature.permute(0,2,1).contiguous().view(batch_size, -1, bev_spatial_shape[0], bev_spatial_shape[1])  # [bs, 256, 64, 128]
 
-        trajectory = self._trajectory_head(
-            trajectory_query,
-            agents_query,
-            cross_bev_feature,
-            bev_spatial_shape,
-            status_encoding[:, None],
-            targets=targets,
-            global_img=None
-        )
+            trajectory = self._trajectory_head(
+                trajectory_query,
+                agents_query,
+                cross_bev_feature,
+                bev_spatial_shape,
+                status_encoding[:, None],
+                targets=targets,
+                global_img=None
+            )
+        elif self._config.trajectory_head_cls_name == "diffusion_nft_trajectory_head":
+            # concat_cross_bev = F.interpolate(concat_cross_bev, size=bev_spatial_shape, mode='bilinear', align_corners=False)  # [bs, 256, 64, 128]
+            # cross_bev_feature = torch.cat([concat_cross_bev, bev_feature_upscale], dim=1)  # [bs, 320, 64, 128]
+            # cross_bev_feature = self.bev_proj(cross_bev_feature.flatten(-2,-1).permute(0,2,1)) # [bs, 8192, 256]
+            # cross_bev_feature = cross_bev_feature.permute(0,2,1).contiguous().view(batch_size, -1, bev_spatial_shape[0], bev_spatial_shape[1])  # [bs, 256, 64, 128]
+            trajectory = self._trajectory_head(
+                trajectory_query,
+                agents_query,
+                concat_cross_bev,
+                bev_spatial_shape,
+                status_encoding[:, None],
+                targets=targets,
+                global_img=None,
+                tokens=features["token"] if "token" in features else None,
+            )
+            pass
         bev_semantic_map = self._bev_semantic_head(bev_feature_upscale)
         agents = self._agent_head(agents_query)
 
@@ -240,6 +300,7 @@ class DiffMotionPlanningRefinementModule(nn.Module):
         plan_reg = traj_delta.reshape(bs,ego_fut_mode, self.ego_fut_ts, 3)
 
         return plan_reg, plan_cls
+
 class ModulationLayer(nn.Module):
 
     def __init__(self, embed_dims: int, condition_dims: int):
