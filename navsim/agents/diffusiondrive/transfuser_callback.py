@@ -91,7 +91,7 @@ class TransfuserCallback(pl.Callback):
         #         dict_to_device(predictions, "cpu"),
         #     )
         #     grid = self._visualize_model(features, targets, predictions)
-        #     trainer.logger.experiment.add_image(f"train_plot_{idx_plot}", grid, global_step=trainer.current_epoch)
+        #     trainer.logger.experiment.add_image(f"epoch_start_train_plot_{idx_plot}", grid, global_step=trainer.current_epoch)
 
 
     def on_train_epoch_end(
@@ -113,7 +113,7 @@ class TransfuserCallback(pl.Callback):
                 dict_to_device(predictions, "cpu"),
             )
             grid = self._visualize_model(features, targets, predictions)
-            trainer.logger.experiment.add_image(f"train_plot_{idx_plot}", grid, global_step=trainer.current_epoch)
+            trainer.logger.experiment.add_image(f"epoch_end_train_plot_{idx_plot}", grid, global_step=trainer.current_epoch)
         """
 
     def _visualize_model(
@@ -129,9 +129,12 @@ class TransfuserCallback(pl.Callback):
         :param predictions: dictionary of target names and predicted tensors
         :return: image tiles as RGB tensors
         """
-        camera = features["camera_feature"].permute(0, 2, 3, 1).numpy()
+        camera_images = features["cameras"].numpy()  # (B, T, N, H, W, C)
+        camera = camera_images[:, 0, 0]
         bev = targets["bev_semantic_map"].numpy()
-        lidar_map = features["lidar_feature"].squeeze(1).numpy()
+        lidar_map = None
+        if "lidar_feature" in features:
+            lidar_map = features["lidar_feature"].squeeze(1).numpy()
         agent_labels = targets["agent_labels"].numpy()
         agent_states = targets["agent_states"].numpy()
         trajectory = targets["trajectory"].numpy()
@@ -173,6 +176,8 @@ def dict_to_device(dict: Dict[str, torch.Tensor], device: Union[torch.device, st
     :return: dictionary with tensors on specified device
     """
     for key in dict.keys():
+        if key in ['token']:
+            continue
         dict[key] = dict[key].to(device)
     return dict
 
