@@ -26,6 +26,26 @@ from navsim.agents.diffusion_trajectory_model import (
 )
 
 
+def calculate_component_losses(target, prediction):
+    """Calculate MSE losses for each trajectory component."""
+    return {
+        "x_mse_error": F.mse_loss(target[..., 0], prediction[..., 0]).item(),
+        "y_mse_error": F.mse_loss(target[..., 1], prediction[..., 1]).item(),
+        "heading_mse_error": F.mse_loss(target[..., 2], prediction[..., 2]).item(),
+    }
+
+def calculate_statistics(**tensors_dict):
+    """Calculate mean and std for multiple tensors."""
+    stats = {}
+    for name, tensor in tensors_dict.items():
+        stats[f"{name}_x/mean"] = tensor[..., 0].mean().item()
+        stats[f"{name}_x/std"] = tensor[..., 0].std().item()
+        stats[f"{name}_y/mean"] = tensor[..., 1].mean().item()
+        stats[f"{name}_y/std"] = tensor[..., 1].std().item()
+        stats[f"{name}_heading/mean"] = tensor[..., 2].mean().item()
+        stats[f"{name}_heading/std"] = tensor[..., 2].std().item()
+    return stats
+
 class AdaLnBlock(nn.Module):
     """Residual block with adaptive layer normalization conditioning."""
 
@@ -290,11 +310,16 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
 
         return sigma
 
-    def _prepare_model_input(self, x_target: torch.Tensor, noise: torch.Tensor,
-                             timesteps: torch.Tensor, pow=0.5):
+    def _prepare_model_input(self, x_target: torch.Tensor, pow=0.5):
         # Add noise to the model input according to the noise magnitude at each timestep
+        noise = torch.randn_like(x_target)  # eps ~ N(0, 1)
+        batch_size = x_target.shape[0]
+        device = x_target.device
         if "flow_matching" in self.scheduler_type:
             if self.training_time_type == "discrete":
+                timesteps = torch.randint(1,
+                                        self.diffusion_train_steps, (batch_size, ),
+                                        device=device).long()  # (b, )
                 sigma = self.get_sigmas(timesteps, x_target.device, n_dim=4)
             elif self.training_time_type == "continuous":
                 n_dim = len(x_target.shape)
@@ -306,11 +331,15 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
             else:
                 raise NotImplementedError
             noisy_model_input = sigma * noise + (1.0 - sigma) * x_target
+            return noisy_model_input, sigma, noise
         else:
+            timesteps = torch.randint(1,
+                                    self.diffusion_train_steps, (batch_size, ),
+                                    device=device).long()  # (b, )
             noisy_model_input = self.diffusion_scheduler.add_noise(
                 x_target, noise, timesteps)
         
-        return noisy_model_input
+            return noisy_model_input, timesteps, noise
 
     def forward_train(self, 
                       ego_query,
@@ -340,11 +369,7 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
         timesteps = torch.randint(1,
                                   self.diffusion_train_steps, (batch_size, ),
                                   device=device).long()  # (b, )
-        # noisy_traj_points = self._prepare_model_input(normed_x_target, noise, timesteps) # (b, 1, trajectory_steps, action_dim)
-        assert self.training_time_type == "discrete"
-        sigma = self.get_sigmas(timesteps, x_target.device, n_dim=4)
-
-        noisy_traj_points = sigma * noise + (1.0 - sigma) * x_target
+        noisy_traj_points, timesteps, noise = self._prepare_model_input(normed_x_target) # (b, 1, trajectory_steps, action_dim)
 
         # 2. proj noisy_traj_points to the query
         traj_pos_embed = gen_sineembed_for_position(noisy_traj_points, hidden_dim=64) # (b, 1, trajectory_steps, 64)
@@ -381,15 +406,23 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
 
         v_prediction = poses_reg_list[-1]
         x0_prediction = noisy_traj_points - timesteps[:,None,None,None] * v_prediction 
-        mse_err = F.mse_loss(normed_x_target, x0_prediction)
+        component_losses = calculate_component_losses(normed_x_target, x0_prediction)
+        trajectory_stats = calculate_statistics(
+            noisy_traj_points=noisy_traj_points,
+            normed_x_target=normed_x_target,
+            x_target=x_target,
+            model_prediction=v_prediction,
+            model_x0_prediction=x0_prediction
+        )
         outputs = {
             "trajectory": v_prediction,
             "trajectory_loss": ret_traj_loss,
             "trajectory_loss_dict": trajectory_loss_dict,
             "timesteps": timesteps,
             "noisy_traj_points": noisy_traj_points,
-            "mse_error": mse_err,
-            }
+            **component_losses,  # Unpack component losses
+            "traj_dict": trajectory_stats,
+        }
 
         return outputs
 
@@ -480,4 +513,14 @@ class DiffusionTrajectoryHeadv2(DiffusionTrajectoryHead):
         if self.training:
             return self.forward_train(ego_query, agents_query, bev_feature,bev_spatial_shape,status_encoding,targets,global_img, tokens=tokens)
         else:
-            return self.forward_test(ego_query, agents_query, bev_feature,bev_spatial_shape,status_encoding,global_img)
+            x_target = targets["trajectory"]
+            out_dict = self.forward_test(ego_query, agents_query, bev_feature,bev_spatial_shape,status_encoding,global_img)
+            pred_traj = out_dict['trajectory']
+            component_losses = calculate_component_losses(x_target, pred_traj)
+            trajectory_stats = calculate_statistics(
+                x_target=x_target,
+                pred_traj=pred_traj,
+            )
+            out_dict.update(**component_losses)
+            out_dict['traj_dict'] = trajectory_stats
+            return out_dict
