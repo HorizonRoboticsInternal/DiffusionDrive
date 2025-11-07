@@ -22,6 +22,27 @@ from navsim.agents.diffusiondrive.modules.conditional_unet1d import SinusoidalPo
 from navsim.agents.fiery.fiery_config import FieryConfig
 
 
+def calculate_component_losses(target, prediction):
+    """Calculate MSE losses for each trajectory component."""
+    return {
+        "x_mse_error": F.mse_loss(target[..., 0], prediction[..., 0]).item(),
+        "y_mse_error": F.mse_loss(target[..., 1], prediction[..., 1]).item(),
+        "heading_mse_error": F.mse_loss(target[..., 2], prediction[..., 2]).item(),
+    }
+
+def calculate_statistics(**tensors_dict):
+    """Calculate mean and std for multiple tensors."""
+    stats = {}
+    for name, tensor in tensors_dict.items():
+        stats[f"{name}_x/mean"] = tensor[..., 0].mean().item()
+        stats[f"{name}_x/std"] = tensor[..., 0].std().item()
+        stats[f"{name}_y/mean"] = tensor[..., 1].mean().item()
+        stats[f"{name}_y/std"] = tensor[..., 1].std().item()
+        stats[f"{name}_heading/mean"] = tensor[..., 2].mean().item()
+        stats[f"{name}_heading/std"] = tensor[..., 2].std().item()
+    return stats
+
+
 def norm_odo(odo_info_fut):
     odo_info_fut_x = odo_info_fut[..., 0:1]
     odo_info_fut_y = odo_info_fut[..., 1:2]
@@ -154,6 +175,7 @@ class CustomTransformerDecoderLayer(nn.Module):
 
         """
         org_noisy_traj_points = noisy_traj_points.clone()
+        assert need_denormed, f"Flag need_denormed needs to set True."
         if need_denormed:
             noisy_traj_points = denorm_odo(noisy_traj_points)
         traj_feature = self.cross_bev_attention(
@@ -186,7 +208,7 @@ class CustomTransformerDecoderLayer(nn.Module):
         # 4.9 predict the offset & heading
         poses_reg = self.task_decoder(traj_feature) # (bs, 1, 8, 3)
         poses_reg = poses_reg + org_noisy_traj_points
-        poses_reg[..., StateSE2Index.HEADING] = poses_reg[..., StateSE2Index.HEADING].tanh() * (3.9 / 2) # np.pi
+        poses_reg[..., StateSE2Index.HEADING] = poses_reg[..., StateSE2Index.HEADING].tanh() * np.pi
 
         return poses_reg
 
@@ -333,16 +355,11 @@ class DiffusionTrajectoryHead(nn.Module):
 
         return sigma
 
-    def _prepare_model_input(self, x_target: torch.Tensor, pow=0.5):
+    def _prepare_model_input(self, x_target: torch.Tensor, noise: torch.Tensor,
+                             timesteps: torch.Tensor, pow=0.5):
         # Add noise to the model input according to the noise magnitude at each timestep
-        noise = torch.randn_like(x_target)  # eps ~ N(0, 1)
-        batch_size = x_target.shape[0]
-        device = x_target.device
         if "flow_matching" in self.scheduler_type:
             if self.training_time_type == "discrete":
-                timesteps = torch.randint(1,
-                                        self.diffusion_train_steps, (batch_size, ),
-                                        device=device).long()  # (b, )
                 sigma = self.get_sigmas(timesteps, x_target.device, n_dim=4)
             elif self.training_time_type == "continuous":
                 n_dim = len(x_target.shape)
@@ -354,15 +371,11 @@ class DiffusionTrajectoryHead(nn.Module):
             else:
                 raise NotImplementedError
             noisy_model_input = sigma * noise + (1.0 - sigma) * x_target
-            return noisy_model_input, sigma, noise
         else:
-            timesteps = torch.randint(1,
-                                    self.diffusion_train_steps, (batch_size, ),
-                                    device=device).long()  # (b, )
             noisy_model_input = self.diffusion_scheduler.add_noise(
                 x_target, noise, timesteps)
         
-            return noisy_model_input, timesteps, noise
+        return noisy_model_input
 
     def forward_train(self, 
                       ego_query,
@@ -392,9 +405,13 @@ class DiffusionTrajectoryHead(nn.Module):
         # print(f"x_target: {x_target[0, 0]}")
         # print(f"normed_x_target: {normed_x_target[0, 0]}")
         batch_size = x_target.shape[0]
-        noisy_traj_points, timesteps, noise = self._prepare_model_input(normed_x_target) # (b, 1, trajectory_steps, action_dim)
-        # noisy_traj_points = torch.clamp(noisy_traj_points, min=-1, max=1)
-        # print(f"noisy_traj_points: {noisy_traj_points[0, 0]}")
+
+        device = ego_query.device
+        noise = torch.randn_like(normed_x_target)  # eps ~ N(0, 1)
+        timesteps = torch.randint(1,
+                                  self.diffusion_train_steps, (batch_size, ),
+                                  device=device).long()  # (b, )
+        noisy_traj_points = self._prepare_model_input(normed_x_target, noise, timesteps) # (b, 1, trajectory_steps, action_dim)
 
         # 2. proj noisy_traj_points to the query
         traj_pos_embed = gen_sineembed_for_position(noisy_traj_points, hidden_dim=64) # (b, 1, trajectory_steps, 64)
@@ -431,15 +448,23 @@ class DiffusionTrajectoryHead(nn.Module):
 
         v_prediction = poses_reg_list[-1]
         x0_prediction = noisy_traj_points - timesteps[:,None,None,None] * v_prediction 
-        mse_err = F.mse_loss(normed_x_target, x0_prediction)
+        component_losses = calculate_component_losses(normed_x_target, x0_prediction)
+        trajectory_stats = calculate_statistics(
+            noisy_traj_points=noisy_traj_points,
+            normed_x_target=normed_x_target,
+            x_target=x_target,
+            model_prediction=v_prediction,
+            model_x0_prediction=x0_prediction
+        )
         outputs = {
             "trajectory": v_prediction,
             "trajectory_loss": ret_traj_loss,
             "trajectory_loss_dict": trajectory_loss_dict,
             "timesteps": timesteps,
             "noisy_traj_points": noisy_traj_points,
-            "mse_error": mse_err,
-            }
+            **component_losses,  # Unpack component losses
+            "traj_dict": trajectory_stats,
+        }
 
         return outputs
 
@@ -502,7 +527,6 @@ class DiffusionTrajectoryHead(nn.Module):
                 timestep=t,
                 sample=noisy_traj_points
             ).prev_sample
-        # print(f"after denoise, pred_traj: {noisy_traj_points[0, 0]}")
         return noisy_traj_points
 
     @torch.no_grad()
@@ -534,9 +558,13 @@ class DiffusionTrajectoryHead(nn.Module):
             return self.forward_train(ego_query, agents_query, bev_feature,bev_spatial_shape,status_encoding,targets, global_img, tokens)
         else:
             x_target = targets["trajectory"]
-            # print(f"x_target: {x_target[0]}")
             out_dict = self.forward_test(ego_query, agents_query, bev_feature,bev_spatial_shape,status_encoding,global_img)
             pred_traj = out_dict['trajectory']
-            error =  F.l1_loss(x_target, pred_traj)
-            # print(f"error: {error.item()}")
+            component_losses = calculate_component_losses(x_target, pred_traj)
+            trajectory_stats = calculate_statistics(
+                x_target=x_target,
+                pred_traj=pred_traj,
+            )
+            out_dict.update(**component_losses)
+            out_dict['traj_dict'] = trajectory_stats
             return out_dict

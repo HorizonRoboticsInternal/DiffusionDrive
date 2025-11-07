@@ -87,7 +87,7 @@ class FieryAgent(AbstractAgent):
             model_keys = set(self.state_dict().keys())
             ckpt_keys = set(state_dict.keys())
             matching_keys = model_keys & ckpt_keys
-            print(f"✅ Matching keys ({len(matching_keys)}), matched_keys: {matching_keys}\n")
+            print(f"✅ Matching keys ({len(matching_keys)})\n")
 
             if missing_keys:
                 print(f"Missing keys when loading pretrained weights: {missing_keys}\n")
