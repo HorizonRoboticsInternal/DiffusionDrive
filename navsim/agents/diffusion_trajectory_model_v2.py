@@ -22,29 +22,10 @@ from navsim.agents.diffusion_trajectory_model import (
     CustomTransformerDecoder,
     DiffMotionPlanningRefinementModule, 
     norm_odo, denorm_odo,
-    DiffusionTrajectoryHead,
+    calculate_component_losses,
+    calculate_statistics
 )
 
-
-def calculate_component_losses(target, prediction):
-    """Calculate MSE losses for each trajectory component."""
-    return {
-        "x_mse_error": F.mse_loss(target[..., 0], prediction[..., 0]).item(),
-        "y_mse_error": F.mse_loss(target[..., 1], prediction[..., 1]).item(),
-        "heading_mse_error": F.mse_loss(target[..., 2], prediction[..., 2]).item(),
-    }
-
-def calculate_statistics(**tensors_dict):
-    """Calculate mean and std for multiple tensors."""
-    stats = {}
-    for name, tensor in tensors_dict.items():
-        stats[f"{name}_x/mean"] = tensor[..., 0].mean().item()
-        stats[f"{name}_x/std"] = tensor[..., 0].std().item()
-        stats[f"{name}_y/mean"] = tensor[..., 1].mean().item()
-        stats[f"{name}_y/std"] = tensor[..., 1].std().item()
-        stats[f"{name}_heading/mean"] = tensor[..., 2].mean().item()
-        stats[f"{name}_heading/std"] = tensor[..., 2].std().item()
-    return stats
 
 class AdaLnBlock(nn.Module):
     """Residual block with adaptive layer normalization conditioning."""
@@ -266,8 +247,8 @@ class DiffusionTrajectoryHeadv2(nn.Module):
             ego_fut_mode=config.ego_fut_mode,
             enable_pooling=config.enable_pooling,
         )
-        num_layers = 2
-        self.diff_decoder = CustomTransformerDecoder(diff_decoder_layer, num_layers)
+        self.num_layers = 2
+        self.diff_decoder = CustomTransformerDecoder(diff_decoder_layer, self.num_layers)
 
     def get_sigmas(self,
                    timesteps: torch.Tensor,
