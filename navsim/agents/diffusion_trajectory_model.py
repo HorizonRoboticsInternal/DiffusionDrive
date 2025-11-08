@@ -557,14 +557,15 @@ class DiffusionTrajectoryHead(nn.Module):
         if self.training:
             return self.forward_train(ego_query, agents_query, bev_feature,bev_spatial_shape,status_encoding,targets, global_img, tokens)
         else:
-            x_target = targets["trajectory"]
             out_dict = self.forward_test(ego_query, agents_query, bev_feature,bev_spatial_shape,status_encoding,global_img)
-            pred_traj = out_dict['trajectory']
-            component_losses = calculate_component_losses(x_target, pred_traj)
-            trajectory_stats = calculate_statistics(
-                x_target=x_target,
-                pred_traj=pred_traj,
-            )
-            out_dict.update(**component_losses)
-            out_dict['traj_dict'] = trajectory_stats
+            if targets is not None and "trajectory" in targets:
+                pred_traj = out_dict['trajectory']
+                x_target = targets["trajectory"]
+                component_losses = calculate_component_losses(x_target, pred_traj)
+                trajectory_stats = calculate_statistics(
+                    x_target=x_target,
+                    pred_traj=pred_traj,
+                )
+                out_dict.update(**component_losses)
+                out_dict['traj_dict'] = trajectory_stats
             return out_dict
