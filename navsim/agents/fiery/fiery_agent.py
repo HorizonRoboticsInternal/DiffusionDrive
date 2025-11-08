@@ -109,8 +109,11 @@ class FieryAgent(AbstractAgent):
             state_dict: Dict[str, Any] = torch.load(self._checkpoint_path, map_location=torch.device("cpu"))[
                 "state_dict"
             ]
-        self.load_state_dict({k.replace("agent.", ""): v for k, v in state_dict.items()})
-
+        missing_keys, unexpected_keys = self.load_state_dict({k.replace("agent.", ""): v for k, v in state_dict.items()})
+        if missing_keys:
+            print(f"Missing keys when loading pretrained weights: {missing_keys}\n")
+        if unexpected_keys:
+            print(f"Unexpected keys when loading pretrained weights: {unexpected_keys}\n")
 
     def get_sensor_config(self) -> SensorConfig:
         """Inherited, see superclass."""
