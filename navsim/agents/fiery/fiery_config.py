@@ -31,13 +31,14 @@ class FieryConfig:
     use_adaptive_weighted_policy_losses: bool = False
     use_kl_div_loss: bool = False
     kl_div_loss_weight: float = 0.0001
+    decay_type: int =1
     navsim_log_path: str = None # path to log annotations
     sensor_blobs_path: str = None # path to sensor blobs
     metric_cache_path: str = None # path to metric cache
 
     # encoder
     encoder_cfg: str = "navsim/agents/fiery/fiery_nuplan.yaml"
-    encoder_pretrained: bool = True
+    encoder_pretrained: bool = False # True
     encoder_freeze: bool = False
 
     # bev encoder

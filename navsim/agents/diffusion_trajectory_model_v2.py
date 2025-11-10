@@ -387,7 +387,9 @@ class DiffusionTrajectoryHeadv2(nn.Module):
             "trajectory_loss_dict": trajectory_loss_dict,
             "timesteps": timesteps,
             "noisy_traj_points": noisy_traj_points,
-            **component_losses,  # Unpack component losses
+            "sta_dict" : {
+                **component_losses,  # Unpack component losses
+            },
             "traj_dict": trajectory_stats,
         }
 

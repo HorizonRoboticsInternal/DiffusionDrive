@@ -22,12 +22,12 @@ from navsim.agents.diffusiondrive.modules.conditional_unet1d import SinusoidalPo
 from navsim.agents.fiery.fiery_config import FieryConfig
 
 
-def calculate_component_losses(target, prediction):
+def calculate_component_losses(target, prediction, prefix=""):
     """Calculate MSE losses for each trajectory component."""
     return {
-        "x_mse_error": F.mse_loss(target[..., 0], prediction[..., 0]).item(),
-        "y_mse_error": F.mse_loss(target[..., 1], prediction[..., 1]).item(),
-        "heading_mse_error": F.mse_loss(target[..., 2], prediction[..., 2]).item(),
+        f"{prefix}" + "x_mse_error": F.mse_loss(target[..., 0], prediction[..., 0]).item(),
+        f"{prefix}" + "y_mse_error": F.mse_loss(target[..., 1], prediction[..., 1]).item(),
+        f"{prefix}" + "heading_mse_error": F.mse_loss(target[..., 2], prediction[..., 2]).item(),
     }
 
 def calculate_statistics(**tensors_dict):

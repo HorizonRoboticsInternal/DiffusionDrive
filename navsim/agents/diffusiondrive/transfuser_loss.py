@@ -67,10 +67,10 @@ def transfuser_loss(
     if "sta_dict" in predictions:
         sta_dict = predictions["sta_dict"]
         loss_dict.update(sta_dict)
-    if "x_mse_error" in predictions:
-        loss_dict["x_mse_error"] = predictions['x_mse_error']
-        loss_dict["y_mse_error"] = predictions['y_mse_error']
-        loss_dict["heading_mse_error"] = predictions['heading_mse_error']
+    # if "x_mse_error" in predictions:
+    #     loss_dict["x_mse_error"] = predictions['x_mse_error']
+    #     loss_dict["y_mse_error"] = predictions['y_mse_error']
+    #     loss_dict["heading_mse_error"] = predictions['heading_mse_error']
     if "traj_dict" in predictions:
         loss_dict.update(predictions['traj_dict'])
     # import ipdb; ipdb.set_trace()
