@@ -157,8 +157,12 @@ def main(cfg: DictConfig) -> None:
             Number of failed scenarios: {num_failed_scenarios}.
             Final average score of valid results: {pdm_score_df['score'].mean()}.
             Results are stored in: {save_path / f"{timestamp}.csv"}.
+            Checkpoint path: {cfg.agent.checkpoint_path}.
         """
     )
+
+    from navsim import summary_metric
+    summary_metric.summarize(save_path / f"{timestamp}.csv")
 
 
 if __name__ == "__main__":
