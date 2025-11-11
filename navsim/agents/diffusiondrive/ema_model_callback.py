@@ -85,8 +85,7 @@ class EMA(Callback):
         if update_fn is None:
             return
         # call EMA update on the model
-        device = pl_module.device if not self.cpu_offload else torch.device('cpu')
-        update_fn(global_step, device=device)
+        update_fn(global_step)
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         # run after optimizer step (Lightning calls this after optimizer.step by default)

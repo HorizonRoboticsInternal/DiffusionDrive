@@ -32,6 +32,7 @@ class FieryConfig:
     use_kl_div_loss: bool = False
     kl_div_loss_weight: float = 0.0001
     decay_type: int =1
+    target_type: str = "x0" # x0 or velocity
     navsim_log_path: str = None # path to log annotations
     sensor_blobs_path: str = None # path to sensor blobs
     metric_cache_path: str = None # path to metric cache

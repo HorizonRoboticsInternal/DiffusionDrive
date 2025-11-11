@@ -391,6 +391,7 @@ class DiffusionTrajectoryHeadv2(nn.Module):
                 **component_losses,  # Unpack component losses
             },
             "traj_dict": trajectory_stats,
+            "targets": v_target
         }
 
         return outputs

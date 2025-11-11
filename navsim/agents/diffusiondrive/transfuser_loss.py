@@ -59,18 +59,12 @@ def transfuser_loss(
         'nft_loss': config.nft_loss_weight * nft_loss,
         'kl_div_loss': config.kl_div_loss_weight * kl_div_loss
     }
-    # print(f"loss: {loss.item()}, traj_loss: {trajectory_loss.item()}, trajectory_weight: {config.trajectory_weight}")
-
     if "trajectory_loss_dict" in predictions:
         trajectory_loss_dict = predictions["trajectory_loss_dict"]
         loss_dict.update(trajectory_loss_dict)
     if "sta_dict" in predictions:
         sta_dict = predictions["sta_dict"]
         loss_dict.update(sta_dict)
-    # if "x_mse_error" in predictions:
-    #     loss_dict["x_mse_error"] = predictions['x_mse_error']
-    #     loss_dict["y_mse_error"] = predictions['y_mse_error']
-    #     loss_dict["heading_mse_error"] = predictions['heading_mse_error']
     if "traj_dict" in predictions:
         loss_dict.update(predictions['traj_dict'])
     # import ipdb; ipdb.set_trace()

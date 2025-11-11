@@ -1,0 +1,44 @@
+_target_: navsim.agents.fiery.fiery_agent.FieryAgent
+_convert_: 'all'
+
+config:
+  _target_: navsim.agents.fiery.fiery_config.FieryConfig
+  _convert_: 'all'
+
+  trajectory_sampling:
+    _target_: nuplan.planning.simulation.trajectory.trajectory_sampling.TrajectorySampling
+    _convert_: 'all'
+    time_horizon: 4
+    interval_length: 0.5
+
+  latent: False
+  plan_anchor_path: null
+  trajectory_head_cls_name: diffusion_nft_trajectory_head # diffusion_trajectory_head #  diffusion_trajectory_head_v2 # / trajectory_head
+  diffusion_scheduler_type: flow_matching_euler # ddim # 
+  training_time_type: discrete # continuous # 
+  diffusion_train_steps: 20
+  diffusion_inference_steps: 20
+  enable_pooling: True # False # 
+  use_ema: True # False # 
+  ema_decay: 0.99
+  num_samples: 8 # 96 # 64 # 32 # 16 # 
+  mini_batch_size: 128 # 512
+  beta: 0.1
+  nft_loss_weight: 0.01 # 
+  Zc: 1.0
+  use_adaptive_weighted_policy_losses: False # True #
+  use_kl_div_loss: False # True # 
+  kl_div_loss_weight: 0.001
+  decay_type: 1
+  target_type: "x0"
+  navsim_log_path: ${oc.env:OPENSCENE_DATA_ROOT}/navsim_logs/trainval # path to log annotations
+  sensor_blobs_path: ${oc.env:OPENSCENE_DATA_ROOT}/sensor_blobs/trainval # path to sensor blobs
+  # metric_cache_path: /mnt/cwai/hpfs0/navsim/navtrain_metric_cache # path to metric cache
+  metric_cache_path: /mnt/cwai/hpfs0/navsim/navtrain_metric_cache_part_1_v2 # /mnt/cwai/hpfs0/navsim/navtrain_mini_metric_cache/
+
+# checkpoint_path: null
+# checkpoint_path: /mnt/cwai/hpfs0/kun.li/DiffusionDrive/exp/training_fiery_agent_flow_matching_no_anchor_normed_input/2025.10.25.06.50.38/lightning_logs/version_0/checkpoints/epoch99-step22200.ckpt # null
+# checkpoint_path: /mnt/cwai/hpfs0/kun.li/DiffusionDrive/exp/training_fiery_agent_flow_matching_efficient_b0/2025.10.28.12.36.24/lightning_logs/version_0/checkpoints/epoch99-step16700.ckpt
+checkpoint_path: /mnt/cwai/hpfs0/kun.li/DiffusionDrive/exp/training_fiery_agent_flow_matching_bev_pool/2025.10.28.10.12.38/lightning_logs/version_0/checkpoints/epoch99-step22200.ckpt
+lr: 6e-4
+
