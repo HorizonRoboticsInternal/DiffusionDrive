@@ -213,7 +213,7 @@ def _plot_rect_3d_on_img(
     for i in range(len(box_corners)):
         layer = tracked_object_types[box_labels[i]]
         color = ImageColor.getcolor(AGENT_CONFIG[layer]["fill_color"], "RGB")
-        corners = box_corners[i].astype(np.int)
+        corners = box_corners[i].astype(np.int32)
         for start, end in line_indices:
             cv2.line(
                 image,
