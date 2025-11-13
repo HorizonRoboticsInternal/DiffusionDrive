@@ -100,6 +100,7 @@ class DiffusionNFTTrajectoryHead(DiffusionTrajectoryHeadv2):
         self.use_kl_div_loss = use_kl_div_loss
         self.decay_type = config.decay_type
         self.target_type = config.target_type
+        self.use_reward_mask = config.use_reward_mask
 
         # --- External modules ---
         self.simulator = simulator
@@ -249,6 +250,25 @@ class DiffusionNFTTrajectoryHead(DiffusionTrajectoryHeadv2):
         pred_trajs = denorm_odo(noisy_traj_points)
         return pred_trajs
 
+
+    def reward_fn(self, tokens: List[str], trajs: torch.Tensor):
+        """Calculates PDM scores for a batch of predicted trajectories."""
+        batch_size = len(tokens)
+        rewards = np.zeros((batch_size, self._num_samples), dtype=np.float32)
+        for i, token in enumerate(tokens):
+            if token not in self.metric_cache_dict:
+                self.metric_cache_dict[token] = self.metric_cache_loader.get_from_token(token)
+            metric_cache = self.metric_cache_dict[token]
+
+            for j in range(self._num_samples):
+                traj = Trajectory(trajs[i][j].cpu().numpy())
+                pdm_result = pdm_score(
+                    metric_cache, traj,
+                    self.simulator.proposal_sampling, self.simulator, self.scorer
+                )
+                rewards[i, j] = pdm_result.score
+        return rewards
+
     # -------------------------------------------------------------------------
     # Main Training Routine
     # -------------------------------------------------------------------------
@@ -301,20 +321,7 @@ class DiffusionNFTTrajectoryHead(DiffusionTrajectoryHeadv2):
         # ------------------------------------------------------------
         # 2️⃣ Compute normalized rewards and r_optimal_prob
         # ------------------------------------------------------------
-        rewards = np.zeros((batch_size, self._num_samples), dtype=np.float32)
-        for i, token in enumerate(tokens):
-            if token not in self.metric_cache_dict:
-                self.metric_cache_dict[token] = self.metric_cache_loader.get_from_token(token)
-            metric_cache = self.metric_cache_dict[token]
-
-            for j in range(self._num_samples):
-                traj = Trajectory(rollout_trajs[i][j].cpu().numpy())
-                pdm_result = pdm_score(
-                    metric_cache, traj,
-                    self.simulator.proposal_sampling, self.simulator, self.scorer
-                )
-                rewards[i, j] = pdm_result.score
-
+        rewards = self.reward_fn(tokens, rollout_trajs)
         norm_rewards = rewards - rewards.mean(axis=1, keepdims=True)
         r_optimal_prob = np.clip(norm_rewards / self._Zc, -1, 1) * 0.5 + 0.5
         r_optimal_prob = torch.tensor(r_optimal_prob.reshape(-1), device=device)
@@ -428,6 +435,8 @@ class DiffusionNFTTrajectoryHead(DiffusionTrajectoryHeadv2):
 
             positive_loss += p_loss.mean().item()
             negative_loss += n_loss.mean().item()
+            if self.use_reward_mask:
+                mb_prob[mb_prob < 0.5] = 0
             nft_loss += (mb_prob * p_loss / self.beta + (1 - mb_prob) * n_loss / self.beta).mean()
 
             if self.use_kl_div_loss:
