@@ -31,6 +31,7 @@ config:
   kl_div_loss_weight: 0.001
   decay_type: 1
   target_type: "x0"
+  use_reward_mask: False # True
   navsim_log_path: ${oc.env:OPENSCENE_DATA_ROOT}/navsim_logs/trainval # path to log annotations
   sensor_blobs_path: ${oc.env:OPENSCENE_DATA_ROOT}/sensor_blobs/trainval # path to sensor blobs
   # metric_cache_path: /mnt/cwai/hpfs0/navsim/navtrain_metric_cache # path to metric cache

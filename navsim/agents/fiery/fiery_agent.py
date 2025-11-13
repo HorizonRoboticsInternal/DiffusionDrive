@@ -27,6 +27,8 @@ from navsim.agents.diffusiondrive.ema_model_callback import EMA
 from navsim.planning.simulation.planner.pdm_planner.simulation.pdm_simulator import PDMSimulator
 from navsim.planning.simulation.planner.pdm_planner.scoring.pdm_scorer import PDMScorer
 from navsim.common.dataloader import SceneFilter
+from navsim.agents.diffusiondrive.visualization_callback import VisualizationCallback
+
 
 def build_from_configs(obj, cfg: DictConfig, **kwargs):
     if cfg is None:
@@ -215,5 +217,9 @@ class FieryAgent(AbstractAgent):
             callbacks += [
                 EMA(self._config.ema_decay),
                 ModelCheckpointAtEpochEnd()
+            ]
+        if self._config.has_vis_callback:
+            callbacks += [
+                VisualizationCallback(self._config),
             ]
         return callbacks

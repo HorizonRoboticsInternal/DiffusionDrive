@@ -33,9 +33,16 @@ class FieryConfig:
     kl_div_loss_weight: float = 0.0001
     decay_type: int =1
     target_type: str = "x0" # x0 or velocity
+    use_reward_mask: bool = False
+    has_vis_callback: bool = True
     navsim_log_path: str = None # path to log annotations
     sensor_blobs_path: str = None # path to sensor blobs
     metric_cache_path: str = None # path to metric cache
+
+    # box parameters of ego vehicle 
+    ego_width=1.85
+    ego_front_length=3.58
+    ego_rear_length=1.04
 
     # encoder
     encoder_cfg: str = "navsim/agents/fiery/fiery_nuplan.yaml"
