@@ -459,48 +459,6 @@ class VisualizationCallback(pl.Callback):
         pl_module.train()
         return predictions
 
-    @staticmethod
-    def _get_tensorboard_writer(logger: Any) -> Optional[SummaryWriter]:
-        """Extract a SummaryWriter from several possible Lightning logger forms.
-
-        Handles:
-        - raw SummaryWriter
-        - TensorBoardLogger where:
-            • logger.experiment is SummaryWriter
-            • logger.experiment is a list[SummaryWriter]
-            • logger.experiment is a dict containing writer
-            • logger._experiment exists (older PL versions)
-        """
-        # Case 1: raw SummaryWriter
-        if isinstance(logger, SummaryWriter):
-            return logger
-
-        # Case 2: standard Lightning TensorBoardLogger
-        experiment = getattr(logger, "experiment", None)
-
-        # Direct SummaryWriter
-        if isinstance(experiment, SummaryWriter):
-            return experiment
-
-        # TensorBoardLogger sometimes returns a list of writers
-        if isinstance(experiment, (list, tuple)):
-            for item in experiment:
-                if isinstance(item, SummaryWriter):
-                    return item
-
-        # Newer Lightning: experiment may be a dict
-        if isinstance(experiment, dict):
-            for v in experiment.values():
-                if isinstance(v, SummaryWriter):
-                    return v
-
-        # Older PL versions stored it in _experiment
-        exp2 = getattr(logger, "_experiment", None)
-        if isinstance(exp2, SummaryWriter):
-            return exp2
-
-        return None
-
     def _log_batch(
         self,
         logger: Any,
@@ -522,15 +480,6 @@ class VisualizationCallback(pl.Callback):
             training_step: Global training step.
             prefix: Tag prefix (e.g., ``"train"`` or ``"val"``).
         """
-        writer = self._get_tensorboard_writer(logger)
-        if writer is None:
-            # Fail gracefully instead of crashing training
-            print(
-                f"[VisualizationCallback] Skipping logging for batch {batch_idx}: "
-                f"no valid TensorBoard SummaryWriter found (got {type(logger)})."
-            )
-            return
-
         # ------------------------------------------------------------------
         # Extract and cache all CPU numpy arrays
         # ------------------------------------------------------------------
@@ -639,15 +588,15 @@ class VisualizationCallback(pl.Callback):
 
             batch_images.append(np.vstack([front_view, bev_img]).astype(np.uint8))
 
-            # ------------------------------------------------------------------
-            # Write batch to TensorBoard
-            # ------------------------------------------------------------------
-            writer.add_images(
-                tag=f"{prefix}_visualization_{batch_idx}",
-                img_tensor=torch.from_numpy(np.stack(batch_images, axis=0)),
-                global_step=training_step,
-                dataformats="NHWC",
-            )
+        # ------------------------------------------------------------------
+        # Write batch to TensorBoard
+        # ------------------------------------------------------------------
+        logger.experiment.add_images(
+                    tag=f"{prefix}_visualization_{batch_idx}",
+                    img_tensor=torch.from_numpy(np.stack(batch_images, axis=0)),
+                    global_step=training_step,
+                    dataformats='NHWC',
+                )
 
     # ------------------------------------------------------------------
     # Helper utilities
