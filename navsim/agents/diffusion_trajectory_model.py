@@ -30,6 +30,7 @@ def calculate_component_losses(target, prediction, prefix=""):
         f"{prefix}" + "heading_mse_error": F.mse_loss(target[..., 2], prediction[..., 2]).item(),
     }
 
+
 def calculate_statistics(**tensors_dict):
     """Calculate mean and std for multiple tensors."""
     stats = {}
@@ -43,27 +44,20 @@ def calculate_statistics(**tensors_dict):
     return stats
 
 
-def norm_odo(odo_info_fut):
-    odo_info_fut_x = odo_info_fut[..., 0:1]
-    odo_info_fut_y = odo_info_fut[..., 1:2]
-    odo_info_fut_head = odo_info_fut[..., 2:3]
+def norm_odo(trajectory: torch.Tensor) -> torch.Tensor:
+    """Normalizes trajectory coordinates and heading to the range [-1, 1]."""
+    x = 2 * (trajectory[..., 0:1] + 1.57) / 66.74 - 1
+    y = 2 * (trajectory[..., 1:2] + 19.68) / 42 - 1
+    heading = 2 * (trajectory[..., 2:3] + 1.67) / 3.53 - 1
+    return torch.cat([x, y, heading], dim=-1)
 
-    odo_info_fut_x = 2*(odo_info_fut_x + 1.2)/56.9 -1
-    odo_info_fut_y = 2*(odo_info_fut_y + 20)/46 -1
-    odo_info_fut_head = 2*(odo_info_fut_head + 2)/3.9 -1
 
-    return torch.cat([odo_info_fut_x, odo_info_fut_y, odo_info_fut_head], dim=-1)
-
-def denorm_odo(odo_info_fut):
-    odo_info_fut_x = odo_info_fut[..., 0:1]
-    odo_info_fut_y = odo_info_fut[..., 1:2]
-    odo_info_fut_head = odo_info_fut[..., 2:3]
-
-    odo_info_fut_x = (odo_info_fut_x + 1)/2 * 56.9 - 1.2
-    odo_info_fut_y = (odo_info_fut_y + 1)/2 * 46 - 20
-    odo_info_fut_head = (odo_info_fut_head + 1)/2 * 3.9 - 2
-
-    return torch.cat([odo_info_fut_x, odo_info_fut_y, odo_info_fut_head], dim=-1)
+def denorm_odo(normalized_trajectory: torch.Tensor) -> torch.Tensor:
+    """Denormalizes trajectory from [-1, 1] back to original coordinate space."""
+    x = (normalized_trajectory[..., 0:1] + 1) / 2 * 66.74 - 1.57
+    y = (normalized_trajectory[..., 1:2] + 1) / 2 * 42 - 19.68
+    heading = (normalized_trajectory[..., 2:3] + 1) / 2 * 3.53 - 1.67
+    return torch.cat([x, y, heading], dim=-1)
 
 
 class DiffMotionPlanningRefinementModule(nn.Module):
